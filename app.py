@@ -19,34 +19,72 @@ st.markdown("""
     div[data-testid="stExpander"] { background-color: #1e1e1e; border: 1px solid #333; }
     h1 { color: #00e5ff; } 
     .success-text { color: #00ff00; font-weight: bold; }
+    /* Style untuk status login di sidebar */
+    .login-box { padding: 15px; background-color: #1c2e2e; border-radius: 10px; border: 1px solid #00e5ff; margin-bottom: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("⚡ Kyxzan VPS Auto-Controller")
-st.markdown("Create VPS Premium AMD & **Auto Generate Kyxzan Password**")
+st.markdown("Controller Vps By Kyxzan")
 
-# --- SIDEBAR: AUTH ---
+# ==========================================
+# BAGIAN AUTHENTICATION (SESSION STATE)
+# ==========================================
+if 'do_token' not in st.session_state:
+    st.session_state.do_token = ''
+
 with st.sidebar:
-    st.header("🔑 API Configuration")
-    api_token = st.text_input("DigitalOcean Token", type="password")
+    st.header("🔐 User Authentication")
     
-    if st.button("🔄 Refresh Data"):
-        st.rerun()
+    # Cek apakah user sudah simpan token atau belum
+    if not st.session_state.do_token:
+        st.info("Masukkan API Token DigitalOcean Anda untuk memulai sesi.")
+        
+        # Form Input Token
+        with st.form("auth_form"):
+            input_token = st.text_input("DigitalOcean API Token", type="password", help="Token disimpan sementara di browser.")
+            btn_login = st.form_submit_button("💾 Simpan & Masuk", type="primary")
+            
+            if btn_login:
+                if input_token:
+                    st.session_state.do_token = input_token
+                    st.rerun()
+                else:
+                    st.error("Token tidak boleh kosong!")
+    else:
+        # Tampilan jika sudah Login
+        st.markdown("""
+        <div class='login-box'>
+            <small>Status:</small><br>
+            <b style='color:#00ff00'>✅ TERHUBUNG</b><br>
+            <small>Session Active</small>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🚪 Logout / Ganti Token"):
+            st.session_state.do_token = ''
+            st.rerun()
 
-if not api_token:
-    st.warning("⚠️ Masukkan API Token dulu.")
+# Logic Utama: Stop jika tidak ada token
+if not st.session_state.do_token:
+    st.warning("⬅️ Silakan Login / Masukkan API Token di Sidebar sebelah kiri.")
     st.stop()
+
+# Gunakan token dari session state
+api_token = st.session_state.do_token
 
 # Inisialisasi Manager
 try:
     manager = digitalocean.Manager(token=api_token)
-except:
-    st.error("Token invalid.")
+except Exception as e:
+    st.sidebar.error("❌ Token Invalid")
+    st.error(f"Gagal terhubung: {e}")
+    st.session_state.do_token = ''
     st.stop()
 
-# --- DATA LENGKAP (REGION & SIZE) ---
+# --- DATA LENGKAP ---
 
-# 1. Region Lengkap DigitalOcean
+# 1. Region Lengkap
 REGIONS = {
     "🇸🇬 Singapore (SGP1)": "sgp1",
     "🇺🇸 New York 1 (NYC1)": "nyc1",
@@ -60,14 +98,16 @@ REGIONS = {
     "🇦🇺 Sydney 1 (SYD1)": "syd1"
 }
 
-# 2. Size Lengkap (Fokus Premium AMD NVMe + 1 Regular Murah)
+# 2. Size Lengkap (PREMIUM AMD NVMe)
 SIZES = {
-    "🔥 AMD Premium 1 GB / 1 vCPU ($7)": "s-1vcpu-1gb-amd",
-    "🔥 AMD Premium 2 GB / 1 vCPU ($14)": "s-1vcpu-2gb-amd",
-    "🔥 AMD Premium 4 GB / 2 vCPU ($28)": "s-2vcpu-4gb-amd",
-    "🔥 AMD Premium 8 GB / 4 vCPU ($56)": "s-4vcpu-8gb-amd",
-    "🔥 AMD Premium 16 GB / 8 vCPU ($112)": "s-8vcpu-16gb-amd",
-    "🐌 Regular Intel 1 GB / 1 vCPU ($6)": "s-1vcpu-1gb" # Opsi Hemat
+    "🔥 AMD 1 GB / 1 vCPU": "s-1vcpu-1gb-amd",
+    "🔥 AMD 2 GB / 1 vCPU": "s-1vcpu-2gb-amd",
+    "🔥 AMD 2 GB / 2 vCPU": "s-2vcpu-2gb-amd",
+    "🔥 AMD 4 GB / 2 vCPU": "s-2vcpu-4gb-amd",
+    "🔥 AMD 8 GB / 2 vCPU": "s-2vcpu-8gb-amd",
+    "🔥 AMD 8 GB / 4 vCPU": "s-4vcpu-8gb-amd",
+    "🔥 AMD 16 GB / 4 vCPU": "s-4vcpu-16gb-amd",
+    "🔥 AMD 16 GB / 8 vCPU": "s-8vcpu-16gb-amd"
 }
 
 IMAGES = {
@@ -79,43 +119,39 @@ IMAGES = {
 
 # --- GENERATOR PASSWORD KYXZAN ---
 def generate_kyxzan_pass():
-    # Format: Kyxzan + 5 karakter acak (Angka & Simbol) biar aman
     chars = string.ascii_letters + string.digits + "!@#$%"
     suffix = ''.join(random.choices(chars, k=6))
     return f"Kyxzan{suffix}"
 
 # --- TABS ---
-tab_create, tab_list = st.tabs(["🚀 Auto Create", "📋 List VPS"])
+tab_create, tab_list = st.tabs(["🚀 Auto Create", "📋 Manage your Droplet"])
 
 # ==========================================
 # TAB 1: CREATE VPS (AUTO PASS)
 # ==========================================
 with tab_create:
-    st.subheader("Deploy New Droplet")
+    st.subheader("Deploy Premium AMD Droplet")
     
     with st.form("deploy_auto"):
         c1, c2 = st.columns(2)
         with c1:
             name_input = st.text_input("Nama Host", "kyxzan-server")
             region_key = st.selectbox("Lokasi Server", list(REGIONS.keys()))
-            st.info("🔒 Password otomatis: **Kyxzan[Acak]**")
+            st.info("🔒 Password otomatis Dibuat")
         
         with c2:
             image_key = st.selectbox("Operating System", list(IMAGES.keys()))
-            size_key = st.selectbox("Spesifikasi", list(SIZES.keys()))
+            size_key = st.selectbox("Spesifikasi (AMD NVMe)", list(SIZES.keys()))
         
-        btn_deploy = st.form_submit_button("🔥 Deploy & Generate Password", type="primary")
+        btn_deploy = st.form_submit_button("🔥 Create VPS Now", type="primary")
 
     if btn_deploy:
-        # 1. Generate Password Otomatis
         auto_pass = generate_kyxzan_pass()
         
-        # 2. Persiapan Data
         sel_region = REGIONS[region_key]
         sel_image = IMAGES[image_key]
         sel_size = SIZES[size_key]
         
-        # Script Cloud-Init (Inject Password)
         user_data = f"""#cloud-config
 chpasswd:
   list: |
@@ -124,11 +160,9 @@ chpasswd:
 ssh_pwauth: True
 """
 
-        # 3. Proses Create
         status_container = st.status("🚀 Sedang memproses...", expanded=True)
         
         try:
-            # STEP A: Request API
             status_container.write(f"🔐 Password digenerate: {auto_pass}")
             status_container.write("📡 Request ke DigitalOcean...")
             
@@ -143,7 +177,6 @@ ssh_pwauth: True
             )
             droplet.create()
             
-            # STEP B: Looping cek IP
             status_container.write("⏳ Menunggu IP Address (max 60 detik)...")
             
             max_retries = 20
@@ -166,7 +199,6 @@ ssh_pwauth: True
             
             status_container.update(label="✅ Selesai!", state="complete", expanded=False)
 
-            # STEP C: Hasil Akhir
             if got_ip:
                 st.success(f"Server {name_input} Siap!")
                 st.markdown("### 🎫 DATA LOGIN VPS (Copy!)")
@@ -190,29 +222,80 @@ LOGIN PAKAI APPS TERMIUS ADA DI PLAYSTORE
             st.error(f"Terjadi kesalahan: {e}")
 
 # ==========================================
-# TAB 2: LIST VPS
+# TAB 2: MANAGE & REBUILD (FITUR BARU)
 # ==========================================
 with tab_list:
-    st.subheader("Active Droplets")
-    if st.button("Refresh List"):
+    st.subheader("Active Droplets Manager")
+    if st.button("🔄 Refresh Data List"):
         st.rerun()
 
     try:
         droplets = manager.get_all_droplets()
-    except:
+    except Exception as e:
+        st.error(f"Gagal mengambil data: {e}")
         droplets = []
 
     if not droplets:
-        st.write("Tidak ada VPS aktif.")
+        st.info("Tidak ada VPS aktif saat ini.")
     
     for d in droplets:
-        with st.expander(f"{d.name} ({d.ip_address})"):
-            c1, c2 = st.columns([3, 1])
-            with c1:
-                st.code(f"IP: {d.ip_address}\nRegion: {d.region['slug']}\nSpecs: {d.size_slug}\nStatus: {d.status}")
-            with c2:
-                if st.button("🗑️ Hapus", key=f"del_{d.id}"):
-                    d.destroy()
-                    st.toast("VPS Dihapus!")
-                    time.sleep(1)
-                    st.rerun()
+        # Tampilan Expandable per VPS
+        with st.expander(f"🖥️ {d.name}  |  IP: {d.ip_address}  |  {d.status}"):
+            
+            # --- Bagian Atas: Informasi ---
+            col_info, col_act = st.columns([1, 2])
+            
+            with col_info:
+                st.markdown("**Detail Server:**")
+                st.code(f"""
+Region : {d.region['slug']}
+Image  : {d.image['slug']}
+Size   : {d.size_slug}
+ID     : {d.id}
+                """)
+            
+            with col_act:
+                st.markdown("**⚡ Control Panel:**")
+                
+                # Baris Tombol Action
+                b1, b2, b3 = st.columns(3)
+                
+                with b1:
+                    if st.button("🔄 Reboot", key=f"reb_{d.id}"):
+                        d.reboot()
+                        st.toast(f"{d.name} sedang direstart...")
+                
+                with b2:
+                    if st.button("🔌 Power Off", key=f"off_{d.id}"):
+                        d.shutdown()
+                        st.toast(f"Mematikan {d.name}...")
+
+                with b3:
+                    if st.button("🗑️ DELETE", type="primary", key=f"del_{d.id}"):
+                        d.destroy()
+                        st.error(f"VPS {d.name} Dihapus Permanen!")
+                        time.sleep(1)
+                        st.rerun()
+                
+                st.divider()
+                
+                # --- Bagian Rebuild (Install Ulang OS) ---
+                st.markdown("**⚠️ Rebuild OS (Reset VPS)**")
+                st.caption("Pilih OS baru dibawah ini, lalu klik Rebuild. Data lama akan hilang.")
+                
+                rb_col1, rb_col2 = st.columns([2, 1])
+                
+                with rb_col1:
+                    # Dropdown pilih OS untuk rebuild
+                    target_image_name = st.selectbox("Pilih OS Baru:", list(IMAGES.keys()), key=f"sel_rb_{d.id}")
+                
+                with rb_col2:
+                    # Tombol Eksekusi Rebuild
+                    if st.button("🔥 REBUILD", key=f"btn_rb_{d.id}"):
+                        try:
+                            target_slug = IMAGES[target_image_name]
+                            d.rebuild(image=target_slug)
+                            st.success(f"Proses Rebuild ke {target_image_name} dimulai!")
+                        except Exception as e:
+                            st.error(f"Gagal Rebuild: {e}")
+
