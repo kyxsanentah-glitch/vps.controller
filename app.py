@@ -1,186 +1,218 @@
 import streamlit as st
 import digitalocean
+import time
+import random
+import string
 from digitalocean import Manager
 
-# --- KONFIGURASI HALAMAN WEB ---
+# --- KONFIGURASI HALAMAN ---
 st.set_page_config(
-    page_title="DO AMD Controller",
-    page_icon="🚀",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Kyxzan VPS Deployer",
+    page_icon="⚡",
+    layout="wide"
 )
 
-# Custom CSS biar tampilan lebih mirip Web App Admin
+# --- CSS CUSTOM ---
 st.markdown("""
 <style>
-    .stButton>button { width: 100%; border-radius: 5px; }
-    .reportview-container { background: #0e1117; }
-    div[data-testid="stExpander"] { border: 1px solid #30333F; border-radius: 8px; }
-    h1, h2, h3 { color: #0080ff; }
+    .stButton>button { width: 100%; border-radius: 6px; font-weight: bold; }
+    div[data-testid="stExpander"] { background-color: #1e1e1e; border: 1px solid #333; }
+    h1 { color: #00e5ff; } 
+    .success-text { color: #00ff00; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🚀 Digital Ocean VPS Controller")
-st.markdown("Web Panel khusus manajemen DigitalOcean Droplet (Premium)")
+st.title("⚡ Kyxzan VPS Auto-Controller")
+st.markdown("Create VPS Premium AMD & **Auto Generate Kyxzan Password**")
 
-# --- SIDEBAR: AUTHENTICATION ---
+# --- SIDEBAR: AUTH ---
 with st.sidebar:
-    st.header("🔐 API Access")
-    api_token = st.text_input("DigitalOcean API Token", type="password", help="Masukkan token Read/Write dari dashboard DO")
+    st.header("🔑 API Configuration")
+    api_token = st.text_input("DigitalOcean Token", type="password")
     
-    st.info("💡 Data list region & size di-hardcode agar loading web cepat.")
-    
-    if st.button("Refresh Halaman"):
+    if st.button("🔄 Refresh Data"):
         st.rerun()
 
 if not api_token:
-    st.warning("⚠️ Masukkan API Token di sidebar sebelah kiri untuk mulai mengontrol VPS.")
+    st.warning("⚠️ Masukkan API Token dulu.")
     st.stop()
 
-# Fungsi koneksi ke DO
-def get_manager():
-    return digitalocean.Manager(token=api_token)
+# Inisialisasi Manager
+try:
+    manager = digitalocean.Manager(token=api_token)
+except:
+    st.error("Token invalid.")
+    st.stop()
 
-manager = get_manager()
+# --- DATA LENGKAP (REGION & SIZE) ---
 
-# --- DATA LIST LENGKAP (PREMIUM AMD & REGIONS) ---
-# Daftar Region Lengkap DigitalOcean
+# 1. Region Lengkap DigitalOcean
 REGIONS = {
-    "Singapore (SGP1)": "sgp1",
-    "New York 1 (NYC1)": "nyc1",
-    "New York 3 (NYC3)": "nyc3",
-    "San Francisco 3 (SFO3)": "sfo3",
-    "Amsterdam 3 (AMS3)": "ams3",
-    "London 1 (LON1)": "lon1",
-    "Frankfurt 1 (FRA1)": "fra1",
-    "Toronto 1 (TOR1)": "tor1",
-    "Bangalore 1 (BLR1)": "blr1",
-    "Sydney 1 (SYD1)": "syd1"
+    "🇸🇬 Singapore (SGP1)": "sgp1",
+    "🇺🇸 New York 1 (NYC1)": "nyc1",
+    "🇺🇸 New York 3 (NYC3)": "nyc3",
+    "🇺🇸 San Francisco 3 (SFO3)": "sfo3",
+    "🇳🇱 Amsterdam 3 (AMS3)": "ams3",
+    "🇬🇧 London 1 (LON1)": "lon1",
+    "🇩🇪 Frankfurt 1 (FRA1)": "fra1",
+    "🇨🇦 Toronto 1 (TOR1)": "tor1",
+    "🇮🇳 Bangalore 1 (BLR1)": "blr1",
+    "🇦🇺 Sydney 1 (SYD1)": "syd1"
 }
 
-# Daftar Size Khusus Premium AMD (Sesuai request: kecil s/d 16GB/8vCPU)
-# Slug DO untuk Premium AMD biasanya diakhiri dengan '-amd' atau '-premium-amd' (tergantung region, pakai basic AMD slug)
-SIZES_AMD = {
-    "AMD 1 GB / 1 vCPU ($7/mo)": "s-1vcpu-1gb-amd",
-    "AMD 2 GB / 1 vCPU ($14/mo)": "s-1vcpu-2gb-amd",
-    "AMD 4 GB / 2 vCPU ($28/mo)": "s-2vcpu-4gb-amd",
-    "AMD 8 GB / 4 vCPU ($56/mo)": "s-4vcpu-8gb-amd",
-    "AMD 16 GB / 8 vCPU ($112/mo)": "s-8vcpu-16gb-amd" 
+# 2. Size Lengkap (Fokus Premium AMD NVMe + 1 Regular Murah)
+SIZES = {
+    "🔥 AMD Premium 1 GB / 1 vCPU ($7)": "s-1vcpu-1gb-amd",
+    "🔥 AMD Premium 2 GB / 1 vCPU ($14)": "s-1vcpu-2gb-amd",
+    "🔥 AMD Premium 4 GB / 2 vCPU ($28)": "s-2vcpu-4gb-amd",
+    "🔥 AMD Premium 8 GB / 4 vCPU ($56)": "s-4vcpu-8gb-amd",
+    "🔥 AMD Premium 16 GB / 8 vCPU ($112)": "s-8vcpu-16gb-amd",
+    "🐌 Regular Intel 1 GB / 1 vCPU ($6)": "s-1vcpu-1gb" # Opsi Hemat
 }
 
-# Daftar OS Populer
 IMAGES = {
-    "Ubuntu 22.04 (LTS)": "ubuntu-22-04-x64",
-    "Ubuntu 20.04 (LTS)": "ubuntu-20-04-x64",
+    "Ubuntu 22.04 LTS": "ubuntu-22-04-x64",
+    "Ubuntu 20.04 LTS": "ubuntu-20-04-x64",
     "Debian 11": "debian-11-x64",
-    "CentOS Stream 9": "centos-stream-9-x64",
-    "Rocky Linux 9": "rockylinux-9-x64"
+    "CentOS Stream 9": "centos-stream-9-x64"
 }
 
-# --- TABS UTAMA ---
-tab1, tab2 = st.tabs(["📋 List VPS & Control", "➕ Create New VPS"])
+# --- GENERATOR PASSWORD KYXZAN ---
+def generate_kyxzan_pass():
+    # Format: Kyxzan + 5 karakter acak (Angka & Simbol) biar aman
+    chars = string.ascii_letters + string.digits + "!@#$%"
+    suffix = ''.join(random.choices(chars, k=6))
+    return f"Kyxzan{suffix}"
 
-# --- TAB 1: LIST & MANAGE ---
-with tab1:
-    st.header("Daftar VPS Aktif")
+# --- TABS ---
+tab_create, tab_list = st.tabs(["🚀 Auto Create", "📋 List VPS"])
+
+# ==========================================
+# TAB 1: CREATE VPS (AUTO PASS)
+# ==========================================
+with tab_create:
+    st.subheader("Deploy New Droplet")
     
-    try:
-        my_droplets = manager.get_all_droplets()
-    except Exception as e:
-        st.error(f"Gagal konek ke DigitalOcean: {e}")
-        st.stop()
-
-    if not my_droplets:
-        st.info("Belum ada VPS yang aktif. Silakan buat di tab sebelah 👉")
-
-    for droplet in my_droplets:
-        # Tampilan Card per VPS
-        with st.expander(f"🖥️ {droplet.name} | {droplet.ip_address or 'Pending IP...'}", expanded=True):
-            col_info, col_act1, col_act2 = st.columns([2, 1, 1])
-            
-            with col_info:
-                st.write(f"**Status:** `{droplet.status}`")
-                st.write(f"**Spec:** `{droplet.size_slug}` | **Region:** `{droplet.region['slug']}`")
-                st.write(f"**Image:** `{droplet.image['slug']}`")
-                st.write(f"**ID:** `{droplet.id}`")
-
-            with col_act1:
-                st.write("##### Power Actions")
-                if st.button("🔄 Reboot", key=f"btn_reb_{droplet.id}"):
-                    droplet.reboot()
-                    st.toast(f"Perintah Reboot dikirim ke {droplet.name}!")
-                
-                # Fitur Rebuild
-                rebuild_img = st.selectbox("OS Rebuild", list(IMAGES.keys()), key=f"sel_reb_{droplet.id}")
-                if st.button("⚠️ Rebuild OS", key=f"btn_rebuild_{droplet.id}"):
-                    if st.checkbox(f"Yakin reset {droplet.name}?", key=f"chk_reb_{droplet.id}"):
-                        try:
-                            droplet.rebuild(image=IMAGES[rebuild_img])
-                            st.toast(f"Proses Rebuild dimulai untuk {droplet.name}...")
-                        except Exception as e:
-                            st.error(f"Gagal Rebuild: {e}")
-
-            with col_act2:
-                st.write("##### Danger Zone")
-                if st.button("🛑 Shutdown", key=f"btn_shut_{droplet.id}"):
-                    droplet.shutdown()
-                    st.toast(f"Perintah Shutdown dikirim ke {droplet.name}")
-                
-                st.write("") # Spacer
-                if st.button("🗑️ DELETE PERMANENT", key=f"btn_del_{droplet.id}", type="primary"):
-                    # Double check pakai checkbox biar gak kepencet
-                    st.warning("Tekan sekali lagi tombol di bawah untuk konfirmasi")
-                    if st.checkbox("Saya sadar data akan hilang", key=f"chk_del_{droplet.id}"):
-                        droplet.destroy()
-                        st.success(f"VPS {droplet.name} telah dihapus!")
-                        st.rerun()
-
-# --- TAB 2: CREATE NEW VPS ---
-with tab2:
-    st.header("Deploy Premium AMD Droplet")
-    
-    with st.form("deploy_form"):
+    with st.form("deploy_auto"):
         c1, c2 = st.columns(2)
         with c1:
-            name_input = st.text_input("Nama VPS", placeholder="server-vip-01")
-            region_key = st.selectbox("Pilih Region", list(REGIONS.keys()))
+            name_input = st.text_input("Nama Host", "kyxzan-server")
+            region_key = st.selectbox("Lokasi Server", list(REGIONS.keys()))
+            st.info("🔒 Password otomatis: **Kyxzan[Acak]**")
         
         with c2:
-            image_key = st.selectbox("Pilih OS", list(IMAGES.keys()))
-            size_key = st.selectbox("Pilih Spesifikasi (AMD Premium)", list(SIZES_AMD.keys()))
+            image_key = st.selectbox("Operating System", list(IMAGES.keys()))
+            size_key = st.selectbox("Spesifikasi", list(SIZES.keys()))
         
-        st.caption("Note: Password root akan dikirim ke email akun DigitalOcean kamu jika tidak setting SSH Key.")
-        
-        submitted = st.form_submit_button("🚀 Deploy Sekarang", type="primary")
-        
-        if submitted:
-            if not name_input:
-                st.error("Nama VPS wajib diisi!")
-            else:
-                try:
-                    # Ambil value asli dari key dictionary
-                    selected_region = REGIONS[region_key]
-                    selected_image = IMAGES[image_key]
-                    selected_size = SIZES_AMD[size_key]
-                    
-                    new_droplet = digitalocean.Droplet(
-                        token=api_token,
-                        name=name_input,
-                        region=selected_region,
-                        image=selected_image,
-                        size_slug=selected_size,
-                        backups=False
-                    )
-                    
-                    with st.spinner('Sedang menghubungi DigitalOcean...'):
-                        new_droplet.create()
-                    
-                    st.success(f"Berhasil! VPS **{name_input}** sedang dibuat di **{selected_region}**.")
-                    st.balloons()
-                    st.info("Silakan pindah ke tab 'List VPS' dan refresh setelah 1 menit untuk melihat IP.")
-                    
-                except digitalocean.DataReadError as e:
-                    st.error(f"Error API: {e} (Cek apakah Token valid / Saldo cukup?)")
-                except Exception as e:
-                    st.error(f"Terjadi kesalahan: {e}")
+        btn_deploy = st.form_submit_button("🔥 Deploy & Generate Password", type="primary")
 
+    if btn_deploy:
+        # 1. Generate Password Otomatis
+        auto_pass = generate_kyxzan_pass()
+        
+        # 2. Persiapan Data
+        sel_region = REGIONS[region_key]
+        sel_image = IMAGES[image_key]
+        sel_size = SIZES[size_key]
+        
+        # Script Cloud-Init (Inject Password)
+        user_data = f"""#cloud-config
+chpasswd:
+  list: |
+    root:{auto_pass}
+  expire: False
+ssh_pwauth: True
+"""
+
+        # 3. Proses Create
+        status_container = st.status("🚀 Sedang memproses...", expanded=True)
+        
+        try:
+            # STEP A: Request API
+            status_container.write(f"🔐 Password digenerate: {auto_pass}")
+            status_container.write("📡 Request ke DigitalOcean...")
+            
+            droplet = digitalocean.Droplet(
+                token=api_token,
+                name=name_input,
+                region=sel_region,
+                image=sel_image,
+                size_slug=sel_size,
+                user_data=user_data,
+                backups=False
+            )
+            droplet.create()
+            
+            # STEP B: Looping cek IP
+            status_container.write("⏳ Menunggu IP Address (max 60 detik)...")
+            
+            max_retries = 20
+            got_ip = False
+            final_ip = "Unknown"
+            
+            bar = status_container.progress(0)
+            
+            for i in range(max_retries):
+                time.sleep(3)
+                droplet.load()
+                
+                bar.progress((i + 1) * 5)
+                
+                if droplet.ip_address:
+                    final_ip = droplet.ip_address
+                    got_ip = True
+                    bar.progress(100)
+                    break
+            
+            status_container.update(label="✅ Selesai!", state="complete", expanded=False)
+
+            # STEP C: Hasil Akhir
+            if got_ip:
+                st.success(f"Server {name_input} Siap!")
+                st.markdown("### 🎫 DATA LOGIN VPS (Copy!)")
+                
+                login_text = f"""
+================================
+IP ADDRESS : {final_ip}
+USERNAME   : root
+PORT       : 22
+PASSWORD   : {auto_pass}
+================================
+LOGIN PAKAI APPS TERMIUS ADA DI PLAYSTORE
+"""
+                st.code(login_text, language="bash")
+                st.caption("⚠️ Simpan password ini sekarang. Web tidak menyimpannya.")
+            else:
+                st.warning("VPS Created tapi IP belum muncul. Cek tab List.")
+
+        except Exception as e:
+            status_container.update(label="❌ Error", state="error")
+            st.error(f"Terjadi kesalahan: {e}")
+
+# ==========================================
+# TAB 2: LIST VPS
+# ==========================================
+with tab_list:
+    st.subheader("Active Droplets")
+    if st.button("Refresh List"):
+        st.rerun()
+
+    try:
+        droplets = manager.get_all_droplets()
+    except:
+        droplets = []
+
+    if not droplets:
+        st.write("Tidak ada VPS aktif.")
+    
+    for d in droplets:
+        with st.expander(f"{d.name} ({d.ip_address})"):
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                st.code(f"IP: {d.ip_address}\nRegion: {d.region['slug']}\nSpecs: {d.size_slug}\nStatus: {d.status}")
+            with c2:
+                if st.button("🗑️ Hapus", key=f"del_{d.id}"):
+                    d.destroy()
+                    st.toast("VPS Dihapus!")
+                    time.sleep(1)
+                    st.rerun()
